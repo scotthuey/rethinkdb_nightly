@@ -141,6 +141,7 @@ function sendToS3(options, directory, target, callback) {
   callback = callback || function() { };
 
   s3client = knox.createClient({
+    endpoint: options.endpoint,
     key: options.key,
     secret: options.secret,
     bucket: options.bucket
