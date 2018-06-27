@@ -133,7 +133,7 @@ function dbDump(options, directory, archiveName, callback) {
  */
 function sendToS3(options, directory, target, callback) {
   console.log(directory);
-  var knox = require('knox')
+  var knox = require('knox-s3')
     , sourceFile = path.join(directory, target)
     , s3client
     , destination = options.destination || '/';
