@@ -2,6 +2,7 @@ var moment = require("moment");
 var util = require("util");
 var fs = require("fs");
 var path = require("path");
+const setPasswordFromDockerSecret = require("./lib/pw_from_docker_secret"); 
 
 var exec = require('child_process').exec
   , spawn = require('child_process').spawn
@@ -87,11 +88,14 @@ function dbDump(options, directory, archiveName, callback) {
 
   callback = callback || function() { };
 
-  rethinkOptions= [
+  rethinkOptions = [
     'dump',
     '-c', options.host + ':' + options.port,
     '-f', path.join(directory,archiveName)
   ];
+  
+  rethinkOptions = setPasswordFromDockerSecret(options, rethinkOptions);
+
   //set the filename to now
 
   if(options.auth_key) {
