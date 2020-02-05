@@ -137,47 +137,32 @@ function dbDump(options, directory, archiveName, callback) {
  */
 function sendToS3(options, directory, target, callback) {
   console.log(directory);
-  var knox = require('knox-s3')
+  var minio = require('minio')
     , sourceFile = path.join(directory, target)
     , s3client
     , destination = options.destination || '/';
 
   callback = callback || function() { };
 
-  s3client = knox.createClient({
-    secure: options.secure || false,
+  s3client = minio.createClient({
+    useSSL: options.secure || false,
     endpoint: options.endpoint,
     port: options.port || 443,
-    style: options.style,
-    key: options.key,
-    secret: options.secret,
-    bucket: options.bucket
+    style: options.style, // -- not used for minio client
+    accessKey: options.key,
+    secretKey: options.secret
   });
 
   log('Attemping to upload ' + target + ' to the ' + options.bucket + ' s3 bucket');
-  s3client.putFile(sourceFile, path.join(destination, target),  function(err, res){
-    if(err) {
-      return callback(err);
+  
+  s3Client.fPutObject(options.bucket, target, sourceFile, function(e) {
+    if (e) {
+      return callback(e);
     }
+    log('Successfully uploaded to s3');
+    return callback();
+  })
 
-    res.setEncoding('utf8');
-
-    res.on('data', function(chunk){
-      if(res.statusCode !== 200) {
-        log(chunk, 'error');
-      } else {
-        log(chunk);
-      }
-    });
-
-    res.on('end', function(chunk) {
-      if (res.statusCode !== 200) {
-        return callback(new Error('Expected a 200 response from S3, got ' + res.statusCode));
-      }
-      log('Successfully uploaded to s3');
-      return callback();
-    });
-  });
 }
 
 /**
