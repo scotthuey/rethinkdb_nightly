@@ -144,7 +144,7 @@ function sendToS3(options, directory, target, callback) {
 
   callback = callback || function() { };
 
-  s3client = minio.Client({
+  s3client = new minio.Client({
     useSSL: options.secure || false,
     endpoint: options.endpoint,
     port: options.port || 443,
