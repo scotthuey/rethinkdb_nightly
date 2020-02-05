@@ -155,7 +155,7 @@ function sendToS3(options, directory, target, callback) {
 
   log('Attemping to upload ' + target + ' to the ' + options.bucket + ' s3 bucket');
   
-  s3Client.fPutObject(options.bucket, target, sourceFile, function(e) {
+  s3client.fPutObject(options.bucket, target, sourceFile, function(e) {
     if (e) {
       return callback(e);
     }
