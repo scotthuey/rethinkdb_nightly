@@ -2,7 +2,8 @@ var moment = require("moment");
 var util = require("util");
 var fs = require("fs");
 var path = require("path");
-const setPasswordFromDockerSecret = require("./lib/pw_from_docker_secret"); 
+const setPasswordFromDockerSecret = require("./lib/pw_from_docker_secret");
+const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 var exec = require('child_process').exec
   , spawn = require('child_process').spawn
@@ -29,7 +30,7 @@ function log(message, tag) {
     info: color.cyanBright
   };
 
-  currentTag = tags[tag] || function(str) { return str; };
+  currentTag = tags[tag] || function (str) { return str; };
   util.log((currentTag("[" + tag + "] ") + message).replace(/(\n|\r|\r\n)$/, ''));
 }
 
@@ -41,7 +42,7 @@ function log(message, tag) {
  * @param databaseName   The name of the database
  */
 function getArchiveName(databaseName) {
-  return util.format("%s_%s_dump.tar.gz",databaseName, moment().format("YYYY-MM-DD"))
+  return util.format("%s_%s_dump.tar.gz", databaseName, moment().format("YYYY-MM-DD"))
 }
 
 /* removeRF
@@ -54,22 +55,22 @@ function getArchiveName(databaseName) {
 function removeRF(target, callback) {
   var fs = require('fs');
 
-  callback = callback || function() { };
+  callback = callback || function () { };
 
-  fs.exists(target, function(exists) {
+  fs.exists(target, function (exists) {
     if (!exists) {
       return callback(null);
     }
     log("Removing " + target, 'warn');
-    exec( 'rm -rf ' + target, callback);
+    exec('rm -rf ' + target, callback);
   });
 }
-function checkTempDir(tmp, callback){
-  fs.exists(tmp, function(exists){
-    if(!exists){
+function checkTempDir(tmp, callback) {
+  fs.exists(tmp, function (exists) {
+    if (!exists) {
       fs.mkdir(tmp, callback)
-    }else{
-      callback(null,true);
+    } else {
+      callback(null, true);
     }
   });
 }
@@ -86,19 +87,19 @@ function dbDump(options, directory, archiveName, callback) {
   var dump
     , rethinkOptions;
 
-  callback = callback || function() { };
+  callback = callback || function () { };
 
   rethinkOptions = [
     'dump',
     '-c', options.host + ':' + options.port,
-    '-f', path.join(directory,archiveName)
+    '-f', path.join(directory, archiveName)
   ];
-  
+
   rethinkOptions = setPasswordFromDockerSecret(options, rethinkOptions);
 
   //set the filename to now
 
-  if(options.auth_key) {
+  if (options.auth_key) {
     rethinkOptions.push('-a');
     rethinkOptions.push(options.auth_key);
   }
@@ -113,11 +114,11 @@ function dbDump(options, directory, archiveName, callback) {
   dump.stderr.on('data', function (data) {
     log(data, 'error');
   });
-  dump.on("error", function(err){
+  dump.on("error", function (err) {
     log(err, 'error');
   })
   dump.on('exit', function (code) {
-    if(code === 0) {
+    if (code === 0) {
       log('dump executed successfully', 'info');
       callback(null);
     } else {
@@ -142,7 +143,7 @@ function sendToS3(options, directory, target, callback) {
     , s3client
     , destination = options.destination || '/';
 
-  callback = callback || function() { };
+  callback = callback || function () { };
 
   s3client = new minio.Client({
     useSSL: options.secure || false,
@@ -153,14 +154,17 @@ function sendToS3(options, directory, target, callback) {
     secretKey: options.secret
   });
 
-  log('Attemping to upload ' + target + ' to the ' + options.bucket + ' s3 bucket');
-  
-  s3client.fPutObject(options.bucket, target, sourceFile, function(e) {
-    if (e) {
-      return callback(e);
+  log('Attempting to upload ' + target + ' to the ' + options.bucket + ' s3 bucket');
+
+  var fileStream = fs.createReadStream(sourceFile)
+  fs.stat(sourceFile, function (err, stats) {
+    if (err) {
+      return callback(err);
     }
-    log('Successfully uploaded to s3');
-    return callback();
+    s3client.putObject(options.bucket, target, fileStream, stats.size, function (err, etag) {
+      log('Successfully uploaded to s3');
+      return callback();
+    })
   })
 
 }
@@ -175,29 +179,31 @@ function sendToS3(options, directory, target, callback) {
  * @param s3Config        s3 config [key, secret, bucket]
  * @param callback        callback(err)
  */
-function sync(rethinkdbConfig, s3Config, callback) {
+async function sync(rethinkdbConfig, s3Config, callback) {
   var tmpDir = path.join(process.cwd(), 'temp')
     , backupDir = path.join(tmpDir, rethinkdbConfig.db)
     , archiveName = getArchiveName(rethinkdbConfig.db)
     , async = require('async');
 
-  callback = callback || function() { };
+  callback = callback || function () { };
 
-  async.series([
-    async.apply(checkTempDir, tmpDir),
-    async.apply(removeRF, backupDir),
-    async.apply(removeRF, path.join(tmpDir, archiveName)),
-    async.apply(dbDump, rethinkdbConfig, tmpDir,archiveName),
-    //async.apply(compressDirectory, tmpDir, rethinkdbConfig.db, archiveName),
-    async.apply(sendToS3, s3Config, tmpDir, archiveName)
-  ], function(err) {
-    if(err) {
-      log(err, 'error');
-    } else {
-      log('Successfully backed up ' + rethinkdbConfig.db);
-    }
+  try {
+    await (util.promisify(checkTempDir)(tmpDir));
+    await (util.promisify(removeRF)(backupDir));
+    await (util.promisify(removeRF)(path.join(tmpDir, archiveName)));
+    await (util.promisify(dbDump)(rethinkdbConfig, tmpDir, archiveName));
+    console.log("waiting 5 seconds before upload...");
+    await sleep(5000);
+    await (util.promisify(sendToS3)(s3Config, tmpDir, archiveName));
+  }
+  catch (err) {
+    log(err, 'error');
     return callback(err);
-  });
+  }
+
+  log('Successfully backed up ' + rethinkdbConfig.db);
+  return callback({ "success": true });
+
 }
 
 module.exports = { sync: sync, log: log };
