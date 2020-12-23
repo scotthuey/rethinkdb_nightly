@@ -169,6 +169,50 @@ function sendToS3(options, directory, target, callback) {
 
 }
 
+async function purgeOldBackups(options, callback) {
+	const minio = require("minio");
+    
+  s3client = new minio.Client({
+    useSSL: options.secure || false,
+    endPoint: options.endpoint,
+    port: options.port || 443,
+    style: options.style, // -- not used for minio client
+    accessKey: options.key,
+    secretKey: options.secret
+  });
+
+  const retentionDays = options.retentionDays || 7;
+	const stream = await s3client.listObjects(options.bucket);
+	const objects = [];
+	stream.on("data", (object) => {
+		objects.push(object);
+	});
+	stream.on("end", async function() {
+		console.log(`${objects.length} files`);    
+		const objectNames = objects.sort(function(a, b){
+			return new Date(b.lastModified) - new Date(a.lastModified);
+		})
+			.map((object) => object.name);
+		const retainedObjects = objectNames.splice(0, retentionDays);
+		console.log(`Retaining ${retainedObjects.length} files:`);
+		console.log(JSON.stringify(retainedObjects, null, 4));
+    
+    console.log(`Removing ${objectNames.length} files`);
+		console.log(JSON.stringify(objectNames, null, 4));
+
+		s3client.removeObjects(options.bucket, objectNames, (err) => {  
+			if(err) {
+        console.log("Error occurred purging old backup files:", err.message, err.stack);
+        if(callback) callback(err, null);
+			}
+			console.log(`Sucessfully purged ${objectNames.length} backup files`);
+      if(callback) callback(null, objectNames);
+		});
+
+	});
+    
+}
+
 /**
  * sync
  *
@@ -182,8 +226,7 @@ function sendToS3(options, directory, target, callback) {
 async function sync(rethinkdbConfig, s3Config, callback) {
   var tmpDir = path.join(process.cwd(), 'temp')
     , backupDir = path.join(tmpDir, rethinkdbConfig.db)
-    , archiveName = getArchiveName(rethinkdbConfig.db)
-    , async = require('async');
+    , archiveName = getArchiveName(rethinkdbConfig.db);
 
   callback = callback || function () { };
 
@@ -195,6 +238,8 @@ async function sync(rethinkdbConfig, s3Config, callback) {
     console.log("waiting 5 seconds before upload...");
     await sleep(5000);
     await (util.promisify(sendToS3)(s3Config, tmpDir, archiveName));
+    await (util.promisify(removeRF)(path.join(tmpDir, archiveName)));
+    await (util.promisify(purgeOldBackups)(s3Config));
   }
   catch (err) {
     log(err, 'error');
