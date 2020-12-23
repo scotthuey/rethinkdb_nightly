@@ -181,7 +181,7 @@ async function purgeOldBackups(options, callback) {
     secretKey: options.secret
   });
 
-  const retentionDays = options.retentionDays || 7;
+  const retention = options.retention || 7;
 	const stream = await s3client.listObjects(options.bucket);
 	const objects = [];
 	stream.on("data", (object) => {
@@ -193,7 +193,7 @@ async function purgeOldBackups(options, callback) {
 			return new Date(b.lastModified) - new Date(a.lastModified);
 		})
 			.map((object) => object.name);
-		const retainedObjects = objectNames.splice(0, retentionDays);
+		const retainedObjects = objectNames.splice(0, retention);
 		console.log(`Retaining ${retainedObjects.length} files:`);
 		console.log(JSON.stringify(retainedObjects, null, 4));
     
