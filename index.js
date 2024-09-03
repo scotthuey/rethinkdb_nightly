@@ -274,6 +274,8 @@ async function sync(rethinkdbConfig, s3Config, callback) {
     await sleep(5000);
     await util.promisify(sendToS3)(s3Config, tmpDir, archiveName);
     await util.promisify(removeRF)(path.join(tmpDir, archiveName));
+    console.log("waiting 5 seconds before purge old backups...");
+    await sleep(5000);
     await util.promisify(purgeOldBackups)(s3Config);
   } catch (err) {
     log(err, "error");
