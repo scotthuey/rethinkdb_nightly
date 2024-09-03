@@ -200,13 +200,17 @@ function sendToS3(options, directory, target, callback) {
 async function purgeOldBackups(options, callback) {
   const minio = require("minio");
 
+  const minioCreds = getMinioCreds();
+
+  if (!minioCreds) throw { message: "Could not get minio creds from secrets" };
+
   s3client = new minio.Client({
     useSSL: options.secure || false,
     endPoint: options.endpoint,
     port: options.port || 443,
     style: options.style, // -- not used for minio client
-    accessKey: options.key,
-    secretKey: options.secret,
+    accessKey: minioCreds.accessKey,
+    secretKey: minioCreds.secretKey,
   });
 
   const retention = options.retention || 7;
